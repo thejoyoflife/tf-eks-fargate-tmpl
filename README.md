@@ -1,6 +1,6 @@
 # Terraform template for AWS EKS with Fargate profile
 
-This terraform setup can be used to setup the AWS infrastructure
+This terraform template can be used to setup the AWS infrastructure
 for a dockerized application running on EKS with a Fargate profile.
 
 ## Prerequisites
