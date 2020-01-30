@@ -17,13 +17,6 @@ module "vpc" {
   availability_zones = var.availability_zones
 }
 
-module "security_groups" {
-  source      = "./security-groups"
-  name        = var.name
-  environment = var.environment
-  vpc_id      = module.vpc.id
-}
-
 module "eks" {
   source                  = "./eks"
   name                    = var.name
@@ -32,6 +25,5 @@ module "eks" {
   vpc_id                  = module.vpc.id
   private_subnets         = module.vpc.private_subnets
   public_subnets          = module.vpc.public_subnets
-  cluster_security_groups = [module.security_groups.default.id]
   kubeconfig_path         = var.kubeconfig_path
 }

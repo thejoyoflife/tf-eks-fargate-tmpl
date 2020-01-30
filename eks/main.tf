@@ -61,7 +61,8 @@ EOF
 }
 
 resource "aws_iam_role" "eks_cluster_role" {
-  name = "${var.name}-eks-cluster-role"
+  name                  = "${var.name}-eks-cluster-role"
+  force_detach_policies = true
 
   assume_role_policy = <<POLICY
 {
@@ -110,7 +111,6 @@ resource "aws_eks_cluster" "main" {
 
   vpc_config {
     subnet_ids = concat(var.public_subnets.*.id, var.private_subnets.*.id)
-    security_group_ids = var.cluster_security_groups
   }
 
   timeouts {
@@ -120,7 +120,7 @@ resource "aws_eks_cluster" "main" {
   depends_on = [
     aws_iam_role_policy_attachment.AmazonEKSClusterPolicy,
     aws_iam_role_policy_attachment.AmazonEKSServicePolicy,
-    aws_cloudwatch_log_group.eks_cluster
+    aws_cloudwatch_log_group.eks_cluster,
   ]
 }
 
@@ -135,7 +135,8 @@ resource "aws_cloudwatch_log_group" "eks_cluster" {
 }
 
 resource "aws_iam_role" "eks_node_group_role" {
-  name = "${var.name}-eks-node-group-role"
+  name                  = "${var.name}-eks-node-group-role"
+  force_detach_policies = true
 
   assume_role_policy = <<POLICY
 {
@@ -171,7 +172,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
 }
 
 resource "aws_eks_node_group" "main" {
-  cluster_name    = aws_eks_cluster.main.name
+  cluster_name    = "${var.name}-${var.environment}"
   node_group_name = "kube-system"
   node_role_arn   = aws_iam_role.eks_node_group_role.arn
   subnet_ids      = var.private_subnets.*.id
@@ -195,6 +196,7 @@ resource "aws_eks_node_group" "main" {
     aws_iam_role_policy_attachment.AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.AmazonEC2ContainerRegistryReadOnly,
+    aws_eks_cluster.main
   ]
 }
 
@@ -204,7 +206,8 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSFargatePodExecutionRolePolic
 }
 
 resource "aws_iam_role" "fargate_pod_execution_role" {
-  name = "${var.name}-eks-fargate-pod-execution-role"
+  name                  = "${var.name}-eks-fargate-pod-execution-role"
+  force_detach_policies = true
 
   assume_role_policy = <<POLICY
 {
