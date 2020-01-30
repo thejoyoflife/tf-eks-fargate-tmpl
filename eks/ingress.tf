@@ -137,12 +137,12 @@ resource "aws_iam_role" "eks_alb_ingress_controller" {
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${replace(aws_eks_cluster.main.identity.0.oidc.0.issuer, "https://", "")}"
+        "Federated": "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${replace(data.aws_eks_cluster.cluster.identity.0.oidc.0.issuer, "s/^https:\\/\\///", "")}"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${replace(aws_eks_cluster.main.identity.0.oidc.0.issuer, "https://", "")}:sub": "system:serviceaccount:kube-system:alb-ingress-controller"
+          "${replace(data.aws_eks_cluster.cluster.identity.0.oidc.0.issuer, "s/^https:\\/\\///", "")}:sub": "system:serviceaccount:kube-system:alb-ingress-controller"
         }
       }
     }
@@ -274,7 +274,7 @@ resource "kubernetes_ingress" "ingress" {
   spec {
     backend {
       service_name = kubernetes_service.main.metadata.0.name
-      service_port = kubernetes_service.main.spec.0.port.port
+      service_port = kubernetes_service.main.spec.0.port.0.port
     }
 
     rule {

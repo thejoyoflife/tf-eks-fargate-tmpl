@@ -248,7 +248,7 @@ resource "aws_eks_fargate_profile" "main" {
 
   timeouts {
     create = "20m"
-    delete = "20m"
+    delete = "30m"
   }
 
   depends_on = [
