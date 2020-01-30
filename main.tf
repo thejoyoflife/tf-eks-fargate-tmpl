@@ -33,4 +33,5 @@ module "eks" {
   private_subnets         = module.vpc.private_subnets
   public_subnets          = module.vpc.public_subnets
   cluster_security_groups = [module.security_groups.default.id]
+  kubeconfig_path         = var.kubeconfig_path
 }

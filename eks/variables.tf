@@ -26,3 +26,8 @@ variable "cluster_security_groups" {
   description = "List of security group ids applied to cluster"
   type        = list(string)
 }
+
+variable "kubeconfig_path" {
+  description = "Path where the config file for kubectl should be written to"
+  type        = string
+}
