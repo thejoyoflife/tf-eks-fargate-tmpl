@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# source: https://github.com/terraform-providers/terraform-provider-aws/issues/10104
+
 if [[ -z "${ATLAS_WORKSPACE_SLUG}" ]]; then
   APP="tail -r"
 else
