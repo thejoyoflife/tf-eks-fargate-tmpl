@@ -24,5 +24,4 @@ variable "public_subnets" {
 
 variable "kubeconfig_path" {
   description = "Path where the config file for kubectl should be written to"
-  type        = string
 }
