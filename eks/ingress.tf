@@ -127,7 +127,9 @@ POLICY
 }
 
 resource "aws_iam_role" "eks_alb_ingress_controller" {
-  name                  = "eks-alb-ingress-controller"
+  name        = "eks-alb-ingress-controller"
+  description = "Permissions required by the Kubernetes AWS ALB Ingress controller to do it's job."
+
   force_detach_policies = true
 
   assume_role_policy = <<ROLE
@@ -137,12 +139,12 @@ resource "aws_iam_role" "eks_alb_ingress_controller" {
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${replace(data.aws_eks_cluster.cluster.identity.0.oidc.0.issuer, "s/^https:\\/\\///", "")}"
+        "Federated": "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${replace(aws_iam_openid_connect_provider.main.url, "https://", "")}"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${replace(data.aws_eks_cluster.cluster.identity.0.oidc.0.issuer, "s/^https:\\/\\///", "")}:sub": "system:serviceaccount:kube-system:alb-ingress-controller"
+          "${replace(aws_iam_openid_connect_provider.main.url, "https://", "")}:sub": "system:serviceaccount:kube-system:alb-ingress-controller"
         }
       }
     }
@@ -160,7 +162,8 @@ resource "kubernetes_cluster_role" "ingress" {
   metadata {
     name = "alb-ingress-controller"
     labels = {
-      "app.kubernetes.io/name" = "alb-ingress-controller"
+      "app.kubernetes.io/name"       = "alb-ingress-controller"
+      "app.kubernetes.io/managed-by" = "terraform"
     }
   }
 
@@ -181,29 +184,32 @@ resource "kubernetes_cluster_role_binding" "ingress" {
   metadata {
     name = "alb-ingress-controller"
     labels = {
-      "app.kubernetes.io/name" = "alb-ingress-controller"
+      "app.kubernetes.io/name"       = "alb-ingress-controller"
+      "app.kubernetes.io/managed-by" = "terraform"
     }
   }
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "ClusterRole"
-    name      = "alb-ingress-controller"
+    name      = kubernetes_cluster_role.ingress.metadata[0].name
   }
   subject {
     kind      = "ServiceAccount"
-    name      = "alb-ingress-controller"
-    namespace = "kube-system"
+    name      = kubernetes_service_account.ingress.metadata[0].name
+    namespace = kubernetes_service_account.ingress.metadata[0].namespace
   }
 
   depends_on = [kubernetes_cluster_role.ingress]
 }
 
 resource "kubernetes_service_account" "ingress" {
+  automount_service_account_token = true
   metadata {
     name      = "alb-ingress-controller"
     namespace = "kube-system"
     labels    = {
-      "app.kubernetes.io/name" = "alb-ingress-controller"
+      "app.kubernetes.io/name"       = "alb-ingress-controller"
+      "app.kubernetes.io/managed-by" = "terraform"
     }
     annotations = {
       "eks.amazonaws.com/role-arn" = aws_iam_role.eks_alb_ingress_controller.arn
@@ -216,12 +222,14 @@ resource "kubernetes_deployment" "ingress" {
     name      = "alb-ingress-controller"
     namespace = "kube-system"
     labels    = {
-      "app.kubernetes.io/name" = "alb-ingress-controller"
+      "app.kubernetes.io/name"       = "alb-ingress-controller"
+      "app.kubernetes.io/version"    = "v1.1.5"
+      "app.kubernetes.io/managed-by" = "terraform"
     }
   }
 
   spec {
-    replicas = 2
+    replicas = 1
 
     selector {
       match_labels = {
@@ -232,57 +240,76 @@ resource "kubernetes_deployment" "ingress" {
     template {
       metadata {
         labels = {
-          "app.kubernetes.io/name" = "alb-ingress-controller"
+          "app.kubernetes.io/name"    = "alb-ingress-controller"
+          "app.kubernetes.io/version" = "v1.1.5"
         }
       }
 
       spec {
-        service_account_name = "alb-ingress-controller"
+        dns_policy                       = "ClusterFirst"
+        restart_policy                   = "Always"
+        service_account_name             = kubernetes_service_account.ingress.metadata[0].name
+        termination_grace_period_seconds = 60
 
         container {
-          image = "docker.io/amazon/aws-alb-ingress-controller:v1.1.4"
-          name  = "alb-ingress-controller"
+          name              = "alb-ingress-controller"
+          image             = "docker.io/amazon/aws-alb-ingress-controller:v1.1.5"
+          image_pull_policy = "Always"
           
-          args  = [
+          args = [
             "--ingress-class=alb",
             "--cluster-name=${aws_eks_cluster.main.name}",
             "--aws-vpc-id=${var.vpc_id}",
-            "--aws-region=${var.region}"
+            "--aws-region=${var.region}",
+            "--aws-max-retries=10",
           ]
+
+          volume_mount {
+            mount_path = "/var/run/secrets/kubernetes.io/serviceaccount"
+            name       = kubernetes_service_account.ingress.default_secret_name
+            read_only  = true
+          }
+
+          port {
+            name           = "health"
+            container_port = 10254
+            protocol       = "TCP"
+          }
+
+          readiness_probe {
+            http_get {
+              path   = "/healthz"
+              port   = "health"
+              scheme = "HTTP"
+            }
+
+            initial_delay_seconds = 30
+            period_seconds        = 60
+            timeout_seconds       = 3
+          }
+
+          liveness_probe {
+            http_get {
+              path   = "/healthz"
+              port   = "health"
+              scheme = "HTTP"
+            }
+
+            initial_delay_seconds = 60
+            period_seconds        = 60
+          }
+        }
+
+        volume {
+          name = kubernetes_service_account.ingress.default_secret_name
+
+          secret {
+            secret_name = kubernetes_service_account.ingress.default_secret_name
+          }
         }
       }
     }
   }
 
-  depends_on = [aws_eks_node_group.main]
-}
-
-resource "kubernetes_ingress" "ingress" {
-  metadata {
-    name      = "2048-ingress"
-    namespace = "default"
-    annotations = {
-      "kubernetes.io/ingress.class"           = "alb"
-      "alb.ingress.kubernetes.io/scheme"      = "internet-facing"
-      "alb.ingress.kubernetes.io/target-type" = "ip"
-    }
-    labels = {
-        "app" = "2048-ingress"
-    }
-  }
-
-  spec {
-    backend {
-      service_name = kubernetes_service.main.metadata.0.name
-      service_port = kubernetes_service.main.spec.0.port.0.port
-    }
-
-    rule {
-      http {
-        path {
-          path = "/*"
-        }
-      }
-    }
-  }
+  depends_on = [kubernetes_cluster_role_binding.ingress]
 }

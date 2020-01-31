@@ -4,7 +4,7 @@ terraform {
 
 provider "aws" {
   version = "~> 2.44"
-  region   = var.region
+  region  = var.region
 }
 
 module "vpc" {
@@ -18,12 +18,12 @@ module "vpc" {
 }
 
 module "eks" {
-  source                  = "./eks"
-  name                    = var.name
-  environment             = var.environment
-  region                  = var.region
-  vpc_id                  = module.vpc.id
-  private_subnets         = module.vpc.private_subnets
-  public_subnets          = module.vpc.public_subnets
-  kubeconfig_path         = var.kubeconfig_path
+  source          = "./eks"
+  name            = var.name
+  environment     = var.environment
+  region          = var.region
+  vpc_id          = module.vpc.id
+  private_subnets = module.vpc.private_subnets
+  public_subnets  = module.vpc.public_subnets
+  kubeconfig_path = var.kubeconfig_path
 }

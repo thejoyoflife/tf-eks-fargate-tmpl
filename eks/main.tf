@@ -6,9 +6,13 @@ provider "template" {
   version = "~> 2.1"
 }
 
+provider "external" {
+  version = "~> 1.2"
+}
+
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.cluster.endpoint
-  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority.0.data)
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
   load_config_file       = false
   version                = "~> 1.10"
@@ -120,7 +124,6 @@ resource "aws_eks_cluster" "main" {
   depends_on = [
     aws_iam_role_policy_attachment.AmazonEKSClusterPolicy,
     aws_iam_role_policy_attachment.AmazonEKSServicePolicy,
-    aws_cloudwatch_log_group.eks_cluster,
   ]
 }
 
@@ -132,6 +135,18 @@ resource "aws_cloudwatch_log_group" "eks_cluster" {
     Name        = "${var.name}-${var.environment}-eks-cloudwatch-log-group"
     Environment = var.environment
   }
+}
+
+# Fetch OIDC provider thumbprint for root CA
+data "external" "thumbprint" {
+  program =    ["${path.module}/oidc_thumbprint.sh", var.region]
+  depends_on = [aws_eks_cluster.main]
+}
+
+resource "aws_iam_openid_connect_provider" "main" {
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.external.thumbprint.result.thumbprint]
+  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
 resource "aws_iam_role" "eks_node_group_role" {
@@ -172,7 +187,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
 }
 
 resource "aws_eks_node_group" "main" {
-  cluster_name    = "${var.name}-${var.environment}"
+  cluster_name    = aws_eks_cluster.main.name
   node_group_name = "kube-system"
   node_role_arn   = aws_iam_role.eks_node_group_role.arn
   subnet_ids      = var.private_subnets.*.id
@@ -196,7 +211,6 @@ resource "aws_eks_node_group" "main" {
     aws_iam_role_policy_attachment.AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.AmazonEC2ContainerRegistryReadOnly,
-    aws_eks_cluster.main
   ]
 }
 
@@ -229,7 +243,7 @@ POLICY
 }
 
 resource "aws_eks_fargate_profile" "main" {
-  cluster_name           = data.aws_eks_cluster.cluster.name
+  cluster_name           = aws_eks_cluster.main.name
   fargate_profile_name   = "fp-default"
   pod_execution_role_arn = aws_iam_role.fargate_pod_execution_role.arn
   subnet_ids             = var.private_subnets.*.id
@@ -237,23 +251,11 @@ resource "aws_eks_fargate_profile" "main" {
   selector {
     namespace = "default"
   }
-  /*
-  selector {
-    namespace = "kube-system"
-    labels = {
-      "k8s-app" = "kubedns"
-    }
-  }
-  */
 
   timeouts {
-    create = "20m"
-    delete = "30m"
+    create = "30m"
+    delete = "60m"
   }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.AmazonEKSFargatePodExecutionRolePolicy
-  ]
 }
 
 data "template_file" "kubeconfig" {
@@ -263,7 +265,7 @@ data "template_file" "kubeconfig" {
     kubeconfig_name           = "eks_${aws_eks_cluster.main.name}"
     clustername               = aws_eks_cluster.main.name
     endpoint                  = data.aws_eks_cluster.cluster.endpoint
-    cluster_auth_base64       = data.aws_eks_cluster.cluster.certificate_authority.0.data
+    cluster_auth_base64       = data.aws_eks_cluster.cluster.certificate_authority[0].data
   }
 }
 

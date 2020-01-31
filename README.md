@@ -6,7 +6,7 @@ for a dockerized application running on EKS with a Fargate profile.
 Ingress is based on https://docs.aws.amazon.com/eks/latest/userguide/alb-ingress.html
 
 ## Prerequisites
-This template requires `aws-iam-authenticator` to be installed
+This template requires `aws-iam-authenticator` and `openssl` to be installed
 
 ## Known limitations
 * Although the namespace `default` is set in the fargate profile (meaning
