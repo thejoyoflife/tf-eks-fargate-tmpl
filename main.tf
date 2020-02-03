@@ -27,3 +27,12 @@ module "eks" {
   public_subnets  = module.vpc.public_subnets
   kubeconfig_path = var.kubeconfig_path
 }
+
+module "ingress" {
+  source       = "./ingress"
+  name         = var.name
+  environment  = var.environment
+  region       = var.region
+  vpc_id       = module.vpc.id
+  cluster_name = module.eks.cluster_name
+}

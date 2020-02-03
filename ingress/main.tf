@@ -2,6 +2,22 @@
   Ingress controller, taken from https://docs.aws.amazon.com/eks/latest/userguide/alb-ingress.html
 */
 
+provider "kubernetes" {
+  host                   = data.aws_eks_cluster.cluster.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
+  token                  = data.aws_eks_cluster_auth.cluster.token
+  load_config_file       = false
+  version                = "~> 1.10"
+}
+
+data "aws_eks_cluster" "cluster" {
+  name = var.cluster_name
+}
+
+data "aws_eks_cluster_auth" "cluster" {
+  name = var.cluster_name
+}
+
 data "aws_caller_identity" "current" {}
 
 resource "aws_iam_policy" "ALBIngressControllerIAMPolicy" {
@@ -260,7 +276,7 @@ resource "kubernetes_deployment" "ingress" {
           
           args = [
             "--ingress-class=alb",
-            "--cluster-name=${aws_eks_cluster.main.name}",
+            "--cluster-name=${data.aws_eks_cluster.cluster.id}",
             "--aws-vpc-id=${var.vpc_id}",
             "--aws-region=${var.region}",
             "--aws-max-retries=10",
