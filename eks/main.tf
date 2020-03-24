@@ -205,6 +205,8 @@ resource "aws_eks_node_group" "main" {
 
   instance_types  = ["t2.micro"]
 
+  version = var.k8s_version
+
   tags = {
     Name        = "${var.name}-${var.environment}-eks-node-group"
     Environment = var.environment
