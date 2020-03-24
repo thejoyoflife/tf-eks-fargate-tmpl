@@ -34,5 +34,5 @@ module "ingress" {
   environment  = var.environment
   region       = var.region
   vpc_id       = module.vpc.id
-  cluster_name = module.eks.cluster_name
+  cluster_id   = module.eks.cluster_id
 }

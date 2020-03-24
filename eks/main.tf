@@ -240,7 +240,7 @@ output "kubectl_config" {
   value       = pathexpand("${var.kubeconfig_path}/config")
 }
 
-output "cluster_name" {
-  description = "Name of the created cluster"
-  value       = aws_eks_cluster.main.name
+output "cluster_id" {
+  description = "ID of the created cluster"
+  value       = aws_eks_cluster.main.id
 }
