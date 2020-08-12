@@ -22,6 +22,7 @@ module "eks" {
   name            = var.name
   environment     = var.environment
   region          = var.region
+  k8s_version     = var.k8s_version
   vpc_id          = module.vpc.id
   private_subnets = module.vpc.private_subnets
   public_subnets  = module.vpc.public_subnets
