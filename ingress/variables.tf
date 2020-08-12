@@ -14,6 +14,6 @@ variable "vpc_id" {
   description = "The VPC the cluser should be created in"
 }
 
-variable "cluster_name" {
-  description = "The name of the cluster where the ingress controller should be attached"
+variable "cluster_id" {
+  description = "The ID of the cluster where the ingress controller should be attached"
 }
