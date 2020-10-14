@@ -37,3 +37,8 @@ variable "kubeconfig_path" {
   description = "Path where the config file for kubectl should be written to"
   default     = "~/.kube"
 }
+
+variable "k8s_version" {
+  description = "Kubernetes version."
+  default     = "1.18.8"
+}
