@@ -3,11 +3,11 @@ provider "local" {
 }
 
 provider "template" {
-  version = "~> 2.1"
+  version = "~> 2.2"
 }
 
 provider "external" {
-  version = "~> 1.2"
+  version = "~> 2.0"
 }
 
 provider "kubernetes" {
@@ -15,7 +15,7 @@ provider "kubernetes" {
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
   load_config_file       = false
-  version                = "~> 1.10"
+  version                = "~> 1.13"
 }
 
 data "aws_eks_cluster" "cluster" {
@@ -140,7 +140,7 @@ resource "aws_eks_cluster" "main" {
 
 # Fetch OIDC provider thumbprint for root CA
 data "external" "thumbprint" {
-  program =    ["${path.module}/oidc_thumbprint.sh", var.region]
+  program    = ["${path.module}/oidc_thumbprint.sh", var.region]
   depends_on = [aws_eks_cluster.main]
 }
 
@@ -203,7 +203,7 @@ resource "aws_eks_node_group" "main" {
     min_size     = 2
   }
 
-  instance_types  = ["t2.micro"]
+  instance_types = ["t2.micro"]
 
   version = var.k8s_version
 
@@ -225,10 +225,10 @@ data "template_file" "kubeconfig" {
   template = file("${path.module}/templates/kubeconfig.tpl")
 
   vars = {
-    kubeconfig_name           = "eks_${aws_eks_cluster.main.name}"
-    clustername               = aws_eks_cluster.main.name
-    endpoint                  = data.aws_eks_cluster.cluster.endpoint
-    cluster_auth_base64       = data.aws_eks_cluster.cluster.certificate_authority[0].data
+    kubeconfig_name     = "eks_${aws_eks_cluster.main.name}"
+    clustername         = aws_eks_cluster.main.name
+    endpoint            = data.aws_eks_cluster.cluster.endpoint
+    cluster_auth_base64 = data.aws_eks_cluster.cluster.certificate_authority[0].data
   }
 }
 

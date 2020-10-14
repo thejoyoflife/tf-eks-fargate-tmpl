@@ -1,9 +1,9 @@
 terraform {
-  required_version = "~>0.12.0"
+  required_version = "~>0.13.0"
 }
 
 provider "aws" {
-  version = "~> 2.44"
+  version = "~> 3.10"
   region  = var.region
 }
 
@@ -30,10 +30,10 @@ module "eks" {
 }
 
 module "ingress" {
-  source       = "./ingress"
-  name         = var.name
-  environment  = var.environment
-  region       = var.region
-  vpc_id       = module.vpc.id
-  cluster_id   = module.eks.cluster_id
+  source      = "./ingress"
+  name        = var.name
+  environment = var.environment
+  region      = var.region
+  vpc_id      = module.vpc.id
+  cluster_id  = module.eks.cluster_id
 }
