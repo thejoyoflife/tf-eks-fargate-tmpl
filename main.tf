@@ -1,12 +1,3 @@
-terraform {
-  required_version = "~>0.13.0"
-  required_providers {
-    alks = {
-      source = "coxautoinc.com/engineering-enablement/alks"
-    }
-  }
-}
-
 provider "aws" {
   version = "~> 3.10"
   region  = var.region
@@ -14,7 +5,7 @@ provider "aws" {
 
 provider "alks" {
   url     = "https://alks.foo.com/rest"
-  version = "~> 1.4.3"
+  version = "~> 1.4"
 }
 
 module "vpc" {
