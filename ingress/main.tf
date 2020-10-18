@@ -145,12 +145,13 @@ POLICY
 }
 
 resource "alks_iamrole" "eks_alb_ingress_controller" {
-  name = "eks-alb-ingress-controller"
-  type = "Amazon EC2"
+  name                     = "eks-alb-ingress-controller"
+  type                     = "Amazon EC2"
+  include_default_policies = true
 }
 
 resource "aws_iam_role_policy" "eks_alb_ingress_controller_arp" {
-  name   = "${data.aws_eks_cluster.cluster.id}-alb-ingress-controller_arp}"
+  name   = "${data.aws_eks_cluster.cluster.id}-alb-ingress-controller_arp"
   role   = alks_iamrole.eks_alb_ingress_controller.id
   policy = <<ROLE
 {
@@ -242,7 +243,7 @@ resource "kubernetes_deployment" "ingress" {
     namespace = "kube-system"
     labels = {
       "app.kubernetes.io/name"       = "alb-ingress-controller"
-      "app.kubernetes.io/version"    = "v1.1.5"
+      "app.kubernetes.io/version"    = "v1.1.9"
       "app.kubernetes.io/managed-by" = "terraform"
     }
   }
@@ -260,7 +261,7 @@ resource "kubernetes_deployment" "ingress" {
       metadata {
         labels = {
           "app.kubernetes.io/name"    = "alb-ingress-controller"
-          "app.kubernetes.io/version" = "v1.1.5"
+          "app.kubernetes.io/version" = "v1.1.9"
         }
       }
 

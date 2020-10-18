@@ -68,8 +68,9 @@ EOF
 }
 
 resource "alks_iamrole" "eks_cluster_role" {
-  name = "${var.name}-eks-cluster-role"
-  type = "Amazon EKS"
+  name                     = "${var.name}-eks-cluster-role"
+  type                     = "Amazon EKS"
+  include_default_policies = true
 }
 resource "aws_iam_role_policy_attachment" "AmazonEKSClusterPolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -143,7 +144,7 @@ resource "alks_iamrole" "eks_node_group_role" {
 }
 
 resource "aws_iam_role_policy" "kube2iam-worker-policy" {
-  name = "${var.cluster-name}-kube2iam-policy"
+  name = "${var.name}-kube2iam-policy"
   role = alks_iamrole.eks_node_group_role.id
 
   policy = <<EOF
