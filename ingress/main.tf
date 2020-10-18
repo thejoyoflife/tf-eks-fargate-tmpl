@@ -144,13 +144,15 @@ resource "aws_iam_policy" "ALBIngressControllerIAMPolicy" {
 POLICY
 }
 
-resource "aws_iam_role" "eks_alb_ingress_controller" {
-  name        = "eks-alb-ingress-controller"
-  description = "Permissions required by the Kubernetes AWS ALB Ingress controller to do it's job."
+resource "alks_iamrole" "eks_alb_ingress_controller" {
+  name = "eks-alb-ingress-controller"
+  type = "Amazon EC2"
+}
 
-  force_detach_policies = true
-
-  assume_role_policy = <<ROLE
+resource "aws_iam_role_policy" "eks_alb_ingress_controller_arp" {
+  name   = "${data.aws_eks_cluster.cluster.id}-alb-ingress-controller_arp}"
+  role   = alks_iamrole.eks_alb_ingress_controller.id
+  policy = <<ROLE
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -173,7 +175,7 @@ ROLE
 
 resource "aws_iam_role_policy_attachment" "ALBIngressControllerIAMPolicy" {
   policy_arn = aws_iam_policy.ALBIngressControllerIAMPolicy.arn
-  role       = aws_iam_role.eks_alb_ingress_controller.name
+  role       = alks_iamrole.eks_alb_ingress_controller.name
 }
 
 resource "kubernetes_cluster_role" "ingress" {
@@ -225,21 +227,20 @@ resource "kubernetes_service_account" "ingress" {
   metadata {
     name      = "alb-ingress-controller"
     namespace = "kube-system"
-    labels    = {
+    labels = {
       "app.kubernetes.io/name"       = "alb-ingress-controller"
       "app.kubernetes.io/managed-by" = "terraform"
     }
     annotations = {
-      "eks.amazonaws.com/role-arn" = aws_iam_role.eks_alb_ingress_controller.arn
+      "eks.amazonaws.com/role-arn" = alks_iamrole.eks_alb_ingress_controller.arn
     }
   }
 }
-
 resource "kubernetes_deployment" "ingress" {
   metadata {
     name      = "alb-ingress-controller"
     namespace = "kube-system"
-    labels    = {
+    labels = {
       "app.kubernetes.io/name"       = "alb-ingress-controller"
       "app.kubernetes.io/version"    = "v1.1.5"
       "app.kubernetes.io/managed-by" = "terraform"
@@ -273,7 +274,7 @@ resource "kubernetes_deployment" "ingress" {
           name              = "alb-ingress-controller"
           image             = "docker.io/amazon/aws-alb-ingress-controller:v1.1.9"
           image_pull_policy = "Always"
-          
+
           args = [
             "--ingress-class=alb",
             "--cluster-name=${data.aws_eks_cluster.cluster.id}",

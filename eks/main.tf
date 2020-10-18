@@ -6,10 +6,13 @@ provider "template" {
   version = "~> 2.2"
 }
 
+provider "tls" {
+  version = "~> 3.0"
+}
+
 provider "external" {
   version = "~> 2.0"
 }
-
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.cluster.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
@@ -64,47 +67,28 @@ resource "aws_iam_policy" "AmazonEKSClusterNLBPolicy" {
 EOF
 }
 
-resource "aws_iam_role" "eks_cluster_role" {
-  name                  = "${var.name}-eks-cluster-role"
-  force_detach_policies = true
-
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": [
-          "eks.amazonaws.com",
-          "eks-fargate-pods.amazonaws.com"
-          ]
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
+resource "alks_iamrole" "eks_cluster_role" {
+  name = "${var.name}-eks-cluster-role"
+  type = "Amazon EKS"
 }
-POLICY
-}
-
 resource "aws_iam_role_policy_attachment" "AmazonEKSClusterPolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-  role       = aws_iam_role.eks_cluster_role.name
+  role       = alks_iamrole.eks_cluster_role.name
 }
 
 resource "aws_iam_role_policy_attachment" "AmazonEKSServicePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSServicePolicy"
-  role       = aws_iam_role.eks_cluster_role.name
+  role       = alks_iamrole.eks_cluster_role.name
 }
 
 resource "aws_iam_role_policy_attachment" "AmazonEKSCloudWatchMetricsPolicy" {
   policy_arn = aws_iam_policy.AmazonEKSClusterCloudWatchMetricsPolicy.arn
-  role       = aws_iam_role.eks_cluster_role.name
+  role       = alks_iamrole.eks_cluster_role.name
 }
 
 resource "aws_iam_role_policy_attachment" "AmazonEKSCluserNLBPolicy" {
   policy_arn = aws_iam_policy.AmazonEKSClusterNLBPolicy.arn
-  role       = aws_iam_role.eks_cluster_role.name
+  role       = alks_iamrole.eks_cluster_role.name
 }
 
 resource "aws_cloudwatch_log_group" "eks_cluster" {
@@ -119,7 +103,7 @@ resource "aws_cloudwatch_log_group" "eks_cluster" {
 
 resource "aws_eks_cluster" "main" {
   name     = "${var.name}-${var.environment}"
-  role_arn = aws_iam_role.eks_cluster_role.arn
+  role_arn = alks_iamrole.eks_cluster_role.arn
 
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
@@ -138,15 +122,12 @@ resource "aws_eks_cluster" "main" {
   ]
 }
 
-# Fetch OIDC provider thumbprint for root CA
-data "external" "thumbprint" {
-  program    = ["${path.module}/oidc_thumbprint.sh", var.region]
-  depends_on = [aws_eks_cluster.main]
+data "tls_certificate" "cluster" {
+  url = data.aws_eks_cluster.cluster.identity.0.oidc.0.issuer
 }
-
 resource "aws_iam_openid_connect_provider" "main" {
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.external.thumbprint.result.thumbprint]
+  thumbprint_list = concat([data.tls_certificate.cluster.certificates.0.sha1_fingerprint])
   url             = data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer
 
   lifecycle {
@@ -154,47 +135,52 @@ resource "aws_iam_openid_connect_provider" "main" {
   }
 }
 
-resource "aws_iam_role" "eks_node_group_role" {
-  name                  = "${var.name}-eks-node-group-role"
-  force_detach_policies = true
+resource "alks_iamrole" "eks_node_group_role" {
+  name                     = "${var.name}-eks-node-group-role"
+  type                     = "Amazon EC2"
+  include_default_policies = true
+  enable_alks_access       = false
+}
 
-  assume_role_policy = <<POLICY
+resource "aws_iam_role_policy" "kube2iam-worker-policy" {
+  name = "${var.cluster-name}-kube2iam-policy"
+  role = alks_iamrole.eks_node_group_role.id
+
+  policy = <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Action": [
+        "sts:AssumeRole"
+      ],
       "Effect": "Allow",
-      "Principal": {
-        "Service": [
-          "ec2.amazonaws.com"
-          ]
-      },
-      "Action": "sts:AssumeRole"
+      "Resource": "*"
     }
   ]
 }
-POLICY
+EOF
 }
 
 resource "aws_iam_role_policy_attachment" "AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role       = aws_iam_role.eks_node_group_role.name
+  role       = alks_iamrole.eks_node_group_role.name
 }
 
 resource "aws_iam_role_policy_attachment" "AmazonEKS_CNI_Policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role       = aws_iam_role.eks_node_group_role.name
+  role       = alks_iamrole.eks_node_group_role.name
 }
 
 resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-  role       = aws_iam_role.eks_node_group_role.name
+  role       = alks_iamrole.eks_node_group_role.name
 }
 
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "kube-system"
-  node_role_arn   = aws_iam_role.eks_node_group_role.arn
+  node_role_arn   = alks_iamrole.eks_node_group_role.arn
   subnet_ids      = var.private_subnets.*.id
 
   scaling_config {
