@@ -20,8 +20,9 @@ data "aws_eks_cluster_auth" "cluster" {
 
 data "aws_caller_identity" "current" {}
 
-resource "aws_iam_policy" "ALBIngressControllerIAMPolicy" {
+resource "aws_iam_role_policy" "ALBIngressControllerIAMPolicy" {
   name   = "ALBIngressControllerIAMPolicy"
+  role   = alks_iamrole.eks_alb_ingress_controller.id
   policy = <<POLICY
 {
   "Version": "2012-10-17",
@@ -174,10 +175,13 @@ resource "aws_iam_role_policy" "eks_alb_ingress_controller_arp" {
 ROLE
 }
 
+/*
 resource "aws_iam_role_policy_attachment" "ALBIngressControllerIAMPolicy" {
   policy_arn = aws_iam_policy.ALBIngressControllerIAMPolicy.arn
   role       = alks_iamrole.eks_alb_ingress_controller.name
 }
+
+*/
 
 resource "kubernetes_cluster_role" "ingress" {
   metadata {

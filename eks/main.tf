@@ -29,8 +29,9 @@ data "aws_eks_cluster_auth" "cluster" {
   name = aws_eks_cluster.main.id
 }
 
-resource "aws_iam_policy" "AmazonEKSClusterCloudWatchMetricsPolicy" {
+resource "aws_iam_role_policy" "AmazonEKSClusterCloudWatchMetricsPolicy" {
   name   = "AmazonEKSClusterCloudWatchMetricsPolicy"
+  role   = alks_iamrole.eks_cluster_role.id
   policy = <<EOF
 {
     "Version": "2012-10-17",
@@ -47,8 +48,9 @@ resource "aws_iam_policy" "AmazonEKSClusterCloudWatchMetricsPolicy" {
 EOF
 }
 
-resource "aws_iam_policy" "AmazonEKSClusterNLBPolicy" {
+resource "aws_iam_role_policy" "AmazonEKSClusterNLBPolicy" {
   name   = "AmazonEKSClusterNLBPolicy"
+  role   = alks_iamrole.eks_cluster_role.id
   policy = <<EOF
 {
     "Version": "2012-10-17",
@@ -82,6 +84,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSServicePolicy" {
   role       = alks_iamrole.eks_cluster_role.name
 }
 
+/*
 resource "aws_iam_role_policy_attachment" "AmazonEKSCloudWatchMetricsPolicy" {
   policy_arn = aws_iam_policy.AmazonEKSClusterCloudWatchMetricsPolicy.arn
   role       = alks_iamrole.eks_cluster_role.name
@@ -91,6 +94,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSCluserNLBPolicy" {
   policy_arn = aws_iam_policy.AmazonEKSClusterNLBPolicy.arn
   role       = alks_iamrole.eks_cluster_role.name
 }
+*/
 
 resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${var.name}-${var.environment}/cluster"
@@ -146,23 +150,17 @@ resource "alks_iamrole" "eks_node_group_role" {
 resource "aws_iam_role_policy" "kube2iam-worker-policy" {
   name = "${var.name}-kube2iam-policy"
   role = alks_iamrole.eks_node_group_role.id
-
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Action": [
-        "sts:AssumeRole"
-      ],
-      "Effect": "Allow",
-      "Resource": "*"
-    }
-  ]
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com",
+      }
+    }]
+  })
 }
-EOF
-}
-
 resource "aws_iam_role_policy_attachment" "AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = alks_iamrole.eks_node_group_role.name
