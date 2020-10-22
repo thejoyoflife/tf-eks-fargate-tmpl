@@ -4,15 +4,15 @@ provider "aws" {
 }
 
 provider "alks" {
-  url     = "https://alks.foo.com/rest"
+  url     = "https://alks.coxautoinc.com/rest"
   version = "~> 1.4"
 }
 
 module "vpc" {
   source             = "./vpc"
+  /*
   name               = var.name
   environment        = var.environment
-  /*
   cidr               = var.cidr
   private_subnets    = var.private_subnets
   public_subnets     = var.public_subnets

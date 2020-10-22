@@ -113,7 +113,7 @@ resource "aws_eks_cluster" "main" {
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   vpc_config {
-    subnet_ids = concat(var.public_subnets.*.id, var.private_subnets.*.id)
+    subnet_ids = concat(sort(var.public_subnets.ids), sort(var.private_subnets.ids))
   }
 
   timeouts {
@@ -180,7 +180,7 @@ resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "kube-system"
   node_role_arn   = alks_iamrole.eks_node_group_role.arn
-  subnet_ids      = var.private_subnets.*.id
+  subnet_ids      = var.private_subnets.ids
 
   scaling_config {
     desired_size = 2

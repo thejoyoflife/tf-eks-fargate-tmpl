@@ -2,14 +2,15 @@
 
 data "aws_vpc" "main" {
   tags = {
-    Name = "${var.name}-${var.environment}-vpc"
+    Name = "awsrtsadminnp"
+    Environment = "np"
   }
 }
 
 data "aws_subnet_ids" "private" {
   vpc_id = data.aws_vpc.main.id
   tags = {
-    Name = "${var.name}-${var.environment}-private-subnet-*"
+    SUB-Type = "Private"
   }
 }
 
@@ -18,7 +19,7 @@ data "aws_subnet_ids" "private" {
 data "aws_subnet_ids" "public" {
   vpc_id = data.aws_vpc.main.id
   tags = {
-    Name = "${var.name}-${var.environment}-public-subnet-*"
+    SUB-Type = "Public"
   }
 }
 
