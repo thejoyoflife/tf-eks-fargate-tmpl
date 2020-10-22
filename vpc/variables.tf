@@ -6,6 +6,7 @@ variable "environment" {
   description = "the name of your environment, e.g. \"prod\""
 }
 
+/*
 variable "cidr" {
   description = "The CIDR block for the VPC."
 }
@@ -21,3 +22,4 @@ variable "private_subnets" {
 variable "availability_zones" {
   description = "List of availability zones"
 }
+*/

@@ -1,5 +1,28 @@
 /* IMPORTANT: https://docs.aws.amazon.com/eks/latest/userguide/network_reqs.html */
 
+data "aws_vpc" "main" {
+  tags = {
+    Name = "${var.name}-${var.environment}-vpc"
+  }
+}
+
+data "aws_subnet_ids" "private" {
+  vpc_id = data.aws_vpc.main.id
+  tags = {
+    Name = "${var.name}-${var.environment}-private-subnet-*"
+  }
+}
+
+# Get the pre-created subnets configured as "external" for the VPC, there should be 3
+# There should be 3 in separate availability zones (AZ)
+data "aws_subnet_ids" "public" {
+  vpc_id = data.aws_vpc.main.id
+  tags = {
+    Name = "${var.name}-${var.environment}-public-subnet-*"
+  }
+}
+
+/*
 resource "aws_vpc" "main" {
   cidr_block           = var.cidr
   enable_dns_support   = true
@@ -164,14 +187,16 @@ resource "aws_iam_role_policy" "vpc-flow-logs-policy" {
 EOF
 }
 
+*/
+
 output "id" {
-  value = aws_vpc.main.id
+  value = data.aws_vpc.main.id
 }
 
 output "public_subnets" {
-  value = aws_subnet.public
+  value = data.aws_subnet_ids.public
 }
 
 output "private_subnets" {
-  value = aws_subnet.private
+  value = data.aws_subnet_ids.private
 }
