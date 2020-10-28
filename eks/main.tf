@@ -6,10 +6,6 @@ provider "template" {
   version = "~> 2.2"
 }
 
-provider "tls" {
-  version = "~> 3.0"
-}
-
 provider "external" {
   version = "~> 2.0"
 }
@@ -69,10 +65,43 @@ resource "aws_iam_role_policy" "AmazonEKSClusterNLBPolicy" {
 EOF
 }
 
+resource "aws_iam_policy" "AmazonEKSClusterRoute53Policy" {
+  name        = "AmazonEKSClusterRoute53Policy"
+  path        = "/"
+  description = "IAM Policy for EKS Route53"
+
+  policy = jsonencode(
+    {
+      Version : "2012-10-17"
+      Statement : [
+        {
+          Effect : "Allow"
+          Action : [
+            "route53:ChangeResourceRecordSets"
+          ]
+          Resource : [
+            "arn:aws:route53:::hostedzone/*"
+          ]
+        },
+        {
+          Effect : "Allow",
+          Action : [
+            "route53:ListHostedZones",
+            "route53:ListResourceRecordSets"
+          ],
+          Resource : [
+            "*"
+          ]
+        }
+      ]
+    }
+  )
+}
+
 resource "alks_iamrole" "eks_cluster_role" {
   name                     = "${var.name}-eks-cluster-role"
-  type                     = "Amazon EKS"
-  include_default_policies = true
+  type                     = "Amazon EKS" // "eks.amazonaws.com", "eks-fargate-pods.amazonaws.com" services assume-role
+  include_default_policies = true         // some policy attachments can be avoided if those are part of this default policies
 }
 resource "aws_iam_role_policy_attachment" "AmazonEKSClusterPolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -84,17 +113,10 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSServicePolicy" {
   role       = alks_iamrole.eks_cluster_role.name
 }
 
-/*
-resource "aws_iam_role_policy_attachment" "AmazonEKSCloudWatchMetricsPolicy" {
-  policy_arn = aws_iam_policy.AmazonEKSClusterCloudWatchMetricsPolicy.arn
+resource "aws_iam_role_policy_attachment" "AmazonEKSClusterRoute53PolicyAttachment" {
+  policy_arn = aws_iam_policy.AmazonEKSClusterRoute53Policy.arn
   role       = alks_iamrole.eks_cluster_role.name
 }
-
-resource "aws_iam_role_policy_attachment" "AmazonEKSCluserNLBPolicy" {
-  policy_arn = aws_iam_policy.AmazonEKSClusterNLBPolicy.arn
-  role       = alks_iamrole.eks_cluster_role.name
-}
-*/
 
 resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${var.name}-${var.environment}/cluster"
@@ -113,7 +135,8 @@ resource "aws_eks_cluster" "main" {
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   vpc_config {
-    subnet_ids = concat(sort(var.public_subnets.ids), sort(var.private_subnets.ids))
+    subnet_ids              = concat(sort(var.public_subnets.ids), sort(var.private_subnets.ids))
+    endpoint_private_access = true
   }
 
   timeouts {
@@ -127,39 +150,37 @@ resource "aws_eks_cluster" "main" {
   ]
 }
 
-data "tls_certificate" "cluster" {
-  url = data.aws_eks_cluster.cluster.identity.0.oidc.0.issuer
-}
-resource "aws_iam_openid_connect_provider" "main" {
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = concat([data.tls_certificate.cluster.certificates.0.sha1_fingerprint])
-  url             = data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer
-
-  lifecycle {
-    ignore_changes = [thumbprint_list]
-  }
-}
-
 resource "alks_iamrole" "eks_node_group_role" {
   name                     = "${var.name}-eks-node-group-role"
   type                     = "Amazon EC2"
   include_default_policies = true
-  enable_alks_access       = false
 }
 
-resource "aws_iam_role_policy" "kube2iam-worker-policy" {
-  name = "${var.name}-kube2iam-policy"
+resource "aws_iam_role_policy" "certmanager_route53_iam_policy" {
+  name = "${var.name}-certmanager_route53_iam_policy"
   role = alks_iamrole.eks_node_group_role.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "ec2.amazonaws.com",
-      }
-    }]
-  })
+  policy = jsonencode(
+    {
+      Version : "2012-10-17"
+      Statement : [
+        {
+          Effect : "Allow"
+          Action : "route53:GetChange"
+          Resource : "arn:aws:route53:::change/*"
+        },
+        {
+          Effect : "Allow"
+          Action : "route53:ChangeResourceRecordSets"
+          Resource : "arn:aws:route53:::hostedzone/*"
+        },
+        {
+          Effect : "Allow"
+          Action : "route53:ListHostedZonesByName"
+          Resource : "*"
+        }
+      ]
+    }
+  )
 }
 resource "aws_iam_role_policy_attachment" "AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
@@ -178,7 +199,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
 
 resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
-  node_group_name = "kube-system"
+  node_group_name = "${var.name}-${var.environment}-nodegroup"
   node_role_arn   = alks_iamrole.eks_node_group_role.arn
   subnet_ids      = var.private_subnets.ids
 
@@ -188,12 +209,8 @@ resource "aws_eks_node_group" "main" {
     min_size     = 2
   }
 
-  instance_types = ["t2.micro"]
-
-  version = var.k8s_version
-
   tags = {
-    Name        = "${var.name}-${var.environment}-eks-node-group"
+    Name        = "${var.name}-${var.environment}-nodegroup"
     Environment = var.environment
   }
 

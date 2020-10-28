@@ -1,0 +1,6 @@
+1. Check in ALKS Portal whether "eks_cluster_role" (type = "Amazon EKS") has "eks.amazonaws.com" and "eks-fargate-pods.amazonaws.com"
+   services listed to be allowed to assume the role.
+2. Not able to create IAM OIDC Provider which is required for external DNS to work - external DNS's ServiceAccount assumes an IAM role
+   which allows it to manage Route53 records automatically.
+3. How to create "trust_arn" of "alks_iamtrustrole" resource of terraform ALKS provider? This trust policy must be dynamic - 
+   accepting values with resource identifiers created through terraform e.g. URL of the created OIDC provider.   

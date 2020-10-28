@@ -1,7 +1,3 @@
-/*
-  Ingress controller, taken from https://docs.aws.amazon.com/eks/latest/userguide/alb-ingress.html
-*/
-
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.cluster.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
@@ -9,6 +5,8 @@ provider "kubernetes" {
   load_config_file       = false
   version                = "~> 1.13"
 }
+
+provider "kubernetes-alpha" {}
 
 data "aws_eks_cluster" "cluster" {
   name = var.cluster_id
@@ -20,235 +18,201 @@ data "aws_eks_cluster_auth" "cluster" {
 
 data "aws_caller_identity" "current" {}
 
-resource "aws_iam_role_policy" "ALBIngressControllerIAMPolicy" {
-  name   = "ALBIngressControllerIAMPolicy"
-  role   = alks_iamrole.eks_alb_ingress_controller.id
-  policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "acm:DescribeCertificate",
-        "acm:ListCertificates",
-        "acm:GetCertificate"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:AuthorizeSecurityGroupIngress",
-        "ec2:CreateSecurityGroup",
-        "ec2:CreateTags",
-        "ec2:DeleteTags",
-        "ec2:DeleteSecurityGroup",
-        "ec2:DescribeAccountAttributes",
-        "ec2:DescribeAddresses",
-        "ec2:DescribeInstances",
-        "ec2:DescribeInstanceStatus",
-        "ec2:DescribeInternetGateways",
-        "ec2:DescribeNetworkInterfaces",
-        "ec2:DescribeSecurityGroups",
-        "ec2:DescribeSubnets",
-        "ec2:DescribeTags",
-        "ec2:DescribeVpcs",
-        "ec2:ModifyInstanceAttribute",
-        "ec2:ModifyNetworkInterfaceAttribute",
-        "ec2:RevokeSecurityGroupIngress"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "elasticloadbalancing:AddListenerCertificates",
-        "elasticloadbalancing:AddTags",
-        "elasticloadbalancing:CreateListener",
-        "elasticloadbalancing:CreateLoadBalancer",
-        "elasticloadbalancing:CreateRule",
-        "elasticloadbalancing:CreateTargetGroup",
-        "elasticloadbalancing:DeleteListener",
-        "elasticloadbalancing:DeleteLoadBalancer",
-        "elasticloadbalancing:DeleteRule",
-        "elasticloadbalancing:DeleteTargetGroup",
-        "elasticloadbalancing:DeregisterTargets",
-        "elasticloadbalancing:DescribeListenerCertificates",
-        "elasticloadbalancing:DescribeListeners",
-        "elasticloadbalancing:DescribeLoadBalancers",
-        "elasticloadbalancing:DescribeLoadBalancerAttributes",
-        "elasticloadbalancing:DescribeRules",
-        "elasticloadbalancing:DescribeSSLPolicies",
-        "elasticloadbalancing:DescribeTags",
-        "elasticloadbalancing:DescribeTargetGroups",
-        "elasticloadbalancing:DescribeTargetGroupAttributes",
-        "elasticloadbalancing:DescribeTargetHealth",
-        "elasticloadbalancing:ModifyListener",
-        "elasticloadbalancing:ModifyLoadBalancerAttributes",
-        "elasticloadbalancing:ModifyRule",
-        "elasticloadbalancing:ModifyTargetGroup",
-        "elasticloadbalancing:ModifyTargetGroupAttributes",
-        "elasticloadbalancing:RegisterTargets",
-        "elasticloadbalancing:RemoveListenerCertificates",
-        "elasticloadbalancing:RemoveTags",
-        "elasticloadbalancing:SetIpAddressType",
-        "elasticloadbalancing:SetSecurityGroups",
-        "elasticloadbalancing:SetSubnets",
-        "elasticloadbalancing:SetWebACL"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "iam:CreateServiceLinkedRole",
-        "iam:GetServerCertificate",
-        "iam:ListServerCertificates"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "cognito-idp:DescribeUserPoolClient"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "waf-regional:GetWebACLForResource",
-        "waf-regional:GetWebACL",
-        "waf-regional:AssociateWebACL",
-        "waf-regional:DisassociateWebACL"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "tag:GetResources",
-        "tag:TagResources"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "waf:GetWebACL"
-      ],
-      "Resource": "*"
+
+resource "kubernetes_manifest" "traefik-ingressroutes" {
+  provider = kubernetes-alpha
+
+  manifest = {
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind       = "CustomResourceDefinition"
+    metadata = {
+      name = "ingressroutes.traefik.containo.us"
     }
-  ]
-}
-POLICY
-}
-
-resource "alks_iamrole" "eks_alb_ingress_controller" {
-  name                     = "eks-alb-ingress-controller"
-  type                     = "Amazon EC2"
-  include_default_policies = true
-}
-
-resource "aws_iam_role_policy" "eks_alb_ingress_controller_arp" {
-  name   = "${data.aws_eks_cluster.cluster.id}-alb-ingress-controller_arp"
-  role   = alks_iamrole.eks_alb_ingress_controller.id
-  policy = <<ROLE
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/${replace(data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer, "https://", "")}"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "${replace(data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer, "https://", "")}:sub": "system:serviceaccount:kube-system:alb-ingress-controller"
-        }
+    spec = {
+      group = "traefik.containo.us"
+      names = {
+        kind     = "IngressRoute"
+        plural   = "ingressroutes"
+        singular = "ingressroute"
       }
+      scope    = "Namespaced"
+      versions = ["v1alpha1"]
     }
-  ]
-}
-ROLE
+  }
 }
 
-/*
-resource "aws_iam_role_policy_attachment" "ALBIngressControllerIAMPolicy" {
-  policy_arn = aws_iam_policy.ALBIngressControllerIAMPolicy.arn
-  role       = alks_iamrole.eks_alb_ingress_controller.name
+resource "kubernetes_manifest" "traefik-ingressroutetcps" {
+  provider = kubernetes-alpha
+
+  manifest = {
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind       = "CustomResourceDefinition"
+    metadata = {
+      name = "ingressroutetcps.traefik.containo.us"
+    }
+    spec = {
+      group = "traefik.containo.us"
+      names = {
+        kind     = "IngressRouteTCP"
+        plural   = "ingressroutetcps"
+        singular = "ingressroutetcp"
+      }
+      scope    = "Namespaced"
+      versions = ["v1alpha1"]
+    }
+  }
 }
 
-*/
+resource "kubernetes_manifest" "traefik-middlewares" {
+  provider = kubernetes-alpha
 
-resource "kubernetes_cluster_role" "ingress" {
+  manifest = {
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind       = "CustomResourceDefinition"
+    metadata = {
+      name = "middlewares.traefik.containo.us"
+    }
+    spec = {
+      group = "traefik.containo.us"
+      names = {
+        kind     = "Middleware"
+        plural   = "middlewares"
+        singular = "middleware"
+      }
+      scope    = "Namespaced"
+      versions = ["v1alpha1"]
+    }
+  }
+}
+
+resource "kubernetes_manifest" "traefik-tlsoptions" {
+  provider = kubernetes-alpha
+
+  manifest = {
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind       = "CustomResourceDefinition"
+    metadata = {
+      name = "tlsoptions.traefik.containo.us"
+    }
+    spec = {
+      group = "traefik.containo.us"
+      names = {
+        kind     = "TLSOption"
+        plural   = "tlsoptions"
+        singular = "tlsoption"
+      }
+      scope    = "Namespaced"
+      versions = ["v1alpha1"]
+    }
+  }
+}
+
+resource "kubernetes_manifest" "traefik-services" {
+  provider = kubernetes-alpha
+
+  manifest = {
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind       = "CustomResourceDefinition"
+    metadata = {
+      name = "traefikservices.traefik.containo.us"
+    }
+    spec = {
+      group = "traefik.containo.us"
+      names = {
+        kind     = "TraefikService"
+        plural   = "traefikservices"
+        singular = "traefikservice"
+      }
+      scope    = "Namespaced"
+      versions = ["v1alpha1"]
+    }
+  }
+}
+
+resource "kubernetes_cluster_role" "traefik-ingress-controller" {
   metadata {
-    name = "alb-ingress-controller"
-    labels = {
-      "app.kubernetes.io/name"       = "alb-ingress-controller"
-      "app.kubernetes.io/managed-by" = "terraform"
-    }
+    name = "traefik-ingress-controller"
   }
 
   rule {
-    api_groups = ["", "extensions"]
-    resources  = ["configmaps", "endpoints", "events", "ingresses", "ingresses/status", "services"]
-    verbs      = ["create", "get", "list", "update", "watch", "patch"]
+    api_groups = [""]
+    resources  = ["services", "endpoints", "secrets"]
+    verbs      = ["get", "list", "watch"]
   }
 
   rule {
-    api_groups = ["", "extensions"]
-    resources  = ["nodes", "pods", "secrets", "services", "namespaces"]
+    api_groups = ["extensions"]
+    resources  = ["ingresses"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["extensions"]
+    resources  = ["ingresses/status"]
+    verbs      = ["update"]
+  }
+
+  rule {
+    api_groups = ["traefik.containo.us"]
+    resources  = ["middlewares"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["traefik.containo.us"]
+    resources  = ["ingressroutes"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["traefik.containo.us"]
+    resources  = ["ingressroutetcps"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["traefik.containo.us"]
+    resources  = ["tlsoptions"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  rule {
+    api_groups = ["traefik.containo.us"]
+    resources  = ["traefikservices"]
     verbs      = ["get", "list", "watch"]
   }
 }
 
-resource "kubernetes_cluster_role_binding" "ingress" {
+resource "kubernetes_service_account" "traefik-ingress-controller" {
+  automount_service_account_token = true
   metadata {
-    name = "alb-ingress-controller"
-    labels = {
-      "app.kubernetes.io/name"       = "alb-ingress-controller"
-      "app.kubernetes.io/managed-by" = "terraform"
-    }
+    name = "traefik-ingress-controller"
+  }
+}
+
+resource "kubernetes_cluster_role_binding" "traefik-ingress-controller" {
+  metadata {
+    name = "traefik-ingress-controller"
   }
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "ClusterRole"
-    name      = kubernetes_cluster_role.ingress.metadata[0].name
+    name      = kubernetes_cluster_role.traefik-ingress-controller.metadata[0].name
   }
   subject {
-    kind      = "ServiceAccount"
-    name      = kubernetes_service_account.ingress.metadata[0].name
-    namespace = kubernetes_service_account.ingress.metadata[0].namespace
+    kind = "ServiceAccount"
+    name = kubernetes_service_account.traefik-ingress-controller.metadata[0].name
   }
 
-  depends_on = [kubernetes_cluster_role.ingress]
+  depends_on = [kubernetes_cluster_role.traefik-ingress-controller]
 }
 
-resource "kubernetes_service_account" "ingress" {
-  automount_service_account_token = true
+
+resource "kubernetes_deployment" "traefik" {
   metadata {
-    name      = "alb-ingress-controller"
-    namespace = "kube-system"
+    name = "traefik"
     labels = {
-      "app.kubernetes.io/name"       = "alb-ingress-controller"
-      "app.kubernetes.io/managed-by" = "terraform"
-    }
-    annotations = {
-      "eks.amazonaws.com/role-arn" = alks_iamrole.eks_alb_ingress_controller.arn
-    }
-  }
-}
-resource "kubernetes_deployment" "ingress" {
-  metadata {
-    name      = "alb-ingress-controller"
-    namespace = "kube-system"
-    labels = {
-      "app.kubernetes.io/name"       = "alb-ingress-controller"
-      "app.kubernetes.io/version"    = "v1.1.9"
-      "app.kubernetes.io/managed-by" = "terraform"
+      "app" = "traefik"
     }
   }
 
@@ -257,83 +221,93 @@ resource "kubernetes_deployment" "ingress" {
 
     selector {
       match_labels = {
-        "app.kubernetes.io/name" = "alb-ingress-controller"
+        "app" = "traefik"
       }
     }
 
     template {
       metadata {
         labels = {
-          "app.kubernetes.io/name"    = "alb-ingress-controller"
-          "app.kubernetes.io/version" = "v1.1.9"
+          "app" = "traefik"
         }
       }
 
       spec {
-        dns_policy                       = "ClusterFirst"
-        restart_policy                   = "Always"
-        service_account_name             = kubernetes_service_account.ingress.metadata[0].name
-        termination_grace_period_seconds = 60
+        service_account_name = kubernetes_service_account.traefik-ingress-controller.metadata[0].name
 
         container {
-          name              = "alb-ingress-controller"
-          image             = "docker.io/amazon/aws-alb-ingress-controller:v1.1.9"
-          image_pull_policy = "Always"
+          name  = "traefik"
+          image = "traefik:v2.3"
 
           args = [
-            "--ingress-class=alb",
-            "--cluster-name=${data.aws_eks_cluster.cluster.id}",
-            "--aws-vpc-id=${var.vpc_id}",
-            "--aws-region=${var.region}",
-            "--aws-max-retries=10",
+            "--api.insecure",
+            "--accesslog",
+            "--entrypoints.web.Address=:8000",
+            "--entrypoints.websecure.Address=:4443",
+            "--providers.kubernetescrd",
+            "--certificatesresolvers.default.acme.tlschallenge",
+            "--certificatesresolvers.default.acme.email=thejoyoflife@gmail.com",
+            "--certificatesresolvers.default.acme.storage=acme.json",
+            "--certificatesresolvers.default.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory",
+            "--tracing.jaeger=true",
+            "--tracing.jaeger.gen128Bit",
+            "--tracing.jaeger.propagation=b3",
+            "--tracing.jaeger.localAgentHostPort=jaeger-agent:6831",
+            "--tracing.jaeger.collector.endpoint=http://jaeger-collector:14268/api/traces?format=jaeger.thrift",
+            "--metrics.prometheus=true"
           ]
 
-          volume_mount {
-            mount_path = "/var/run/secrets/kubernetes.io/serviceaccount"
-            name       = kubernetes_service_account.ingress.default_secret_name
-            read_only  = true
+          port {
+            name           = "web"
+            container_port = 8000
           }
 
           port {
-            name           = "health"
-            container_port = 10254
-            protocol       = "TCP"
-          }
-
-          readiness_probe {
-            http_get {
-              path   = "/healthz"
-              port   = "health"
-              scheme = "HTTP"
-            }
-
-            initial_delay_seconds = 30
-            period_seconds        = 60
-            timeout_seconds       = 3
-          }
-
-          liveness_probe {
-            http_get {
-              path   = "/healthz"
-              port   = "health"
-              scheme = "HTTP"
-            }
-
-            initial_delay_seconds = 60
-            period_seconds        = 60
-          }
-        }
-
-        volume {
-          name = kubernetes_service_account.ingress.default_secret_name
-
-          secret {
-            secret_name = kubernetes_service_account.ingress.default_secret_name
+            name           = "websecure"
+            container_port = 4443
           }
         }
       }
     }
   }
 
-  depends_on = [kubernetes_cluster_role_binding.ingress]
+  depends_on = [kubernetes_cluster_role_binding.traefik-ingress-controller]
 }
+
+resource "kubernetes_service" "traefik" {
+  metadata {
+    name = "traefik"
+    annotations = {
+      "service.beta.kubernetes.io/aws-load-balancer-type" = "nlb"
+      "external-dns.alpha.kubernetes.io/hostname"         = "*.eks-test.coxautoinc.com"
+    }
+  }
+  spec {
+    selector = {
+      app = "${kubernetes_deployment.traefik.metadata.0.labels.app}"
+    }
+
+    port {
+      name        = "web"
+      protocol    = "TCP"
+      port        = 80
+      target_port = "web"
+    }
+
+    port {
+      name     = "admin"
+      protocol = "TCP"
+      port     = 8080
+    }
+
+    port {
+      name        = "websecure"
+      protocol    = "TCP"
+      port        = 443
+      target_port = "websecure"
+    }
+
+    type = "LoadBalancer"
+  }
+}
+
